@@ -5,9 +5,17 @@ from openai import OpenAI
 
 load_dotenv()
 
+LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+TEXT_MODEL = os.getenv("TEXT_MODEL", "openrouter/free")
+VISION_MODEL = os.getenv(
+    "VISION_MODEL",
+    os.getenv("OCR_MODEL", "openai/gpt-4o-mini"),
+)
+
 client = OpenAI(
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    base_url="https://openrouter.ai/api/v1",
+    api_key=LLM_API_KEY,
+    base_url=LLM_BASE_URL,
 )
 
 MENU_SECTION_MARKERS = (
@@ -17,11 +25,6 @@ MENU_SECTION_MARKERS = (
     "гарниры",
     "напитки",
     "десерт",
-)
-
-VISION_MODEL = os.getenv(
-    "VISION_MODEL",
-    os.getenv("OCR_MODEL", "openai/gpt-4o-mini"),
 )
 
 SYSTEM_PROMPT = """
@@ -105,7 +108,7 @@ def is_menu_response(text: str) -> bool:
 
 def improve_menu(text: str) -> str:
     response = client.chat.completions.create(
-        model="openrouter/free",
+        model=TEXT_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": text},
