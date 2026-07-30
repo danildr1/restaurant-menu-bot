@@ -81,8 +81,6 @@ PREVIEW_KEYBOARD = ReplyKeyboardMarkup(
 )
 
 
-print(ask_gemini("Ответь одним словом: OK"))
-
 
 # ============================================================
 # Команда /start

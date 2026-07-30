@@ -9,7 +9,7 @@ client = OpenAI(
 
 def ask_gemini(prompt: str) -> str:
     response = client.chat.completions.create(
-        model="google/gemini-2.5-flash",
+        model="openrouter/free",
         messages=[
             {
                 "role": "user",
