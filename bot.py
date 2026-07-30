@@ -16,14 +16,11 @@ bot.py
 # ============================================================
 
 import logging
-from multiprocessing import context
 import os
-import re
 import asyncio
 from contextlib import suppress
 from uuid import uuid4
-from turtle import update
-from llm import improve_menu
+from llm import improve_menu, improve_menu_from_image
 
 from dotenv import load_dotenv
 
@@ -31,7 +28,7 @@ from dotenv import load_dotenv
 # Импорт Telegram
 # ============================================================
 
-from telegram import ReplyKeyboardMarkup, Update
+from telegram import ReplyKeyboardRemove, Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -70,13 +67,7 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-GENERATE_MENU_BUTTON = "Сгенерировать меню по тексту"
 WAITING_CAT_URL = "https://cataas.com/cat/says/Думою..."
-
-KEYBOARD = ReplyKeyboardMarkup(
-    [[GENERATE_MENU_BUTTON]],
-    resize_keyboard=True,
-)
 
 
 
@@ -91,23 +82,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "Привет!\n\n"
-        "Нажми «Сгенерировать меню по тексту», затем отправь текст бизнес-ланча.",
-        reply_markup=KEYBOARD,
+        "Пришли текст или фотографию бизнес-ланча — я создам изображение меню.",
+        reply_markup=ReplyKeyboardRemove(),
     )
 
 
 # ============================================================
-# Кнопка генерации меню
+# Получение исходного текста
 # ============================================================
 
-async def request_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Просит пользователя отправить текст меню.
-    """
+async def get_menu_input(update: Update) -> tuple[str, bool]:
+    """Возвращает текст и признак, что фото уже обработано vision-моделью."""
 
-    await update.message.reply_text(
-        "Отправь текст бизнес-ланча, и я создам изображение меню."
+    if update.message.text:
+        return update.message.text, False
+
+    photo = update.message.photo[-1]
+    photo_file = await photo.get_file()
+    image_bytes = await photo_file.download_as_bytearray()
+
+    menu_text = await asyncio.to_thread(
+        improve_menu_from_image,
+        bytes(image_bytes),
     )
+    return menu_text, True
 
 
 # ============================================================
@@ -125,7 +123,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         progress_message = await update.message.reply_photo(
             photo=f"{WAITING_CAT_URL}?v={uuid4().hex}",
             caption=(
-                "🐈 Думаю над текстом… Это может занять немного времени: "
+                "🐈 Разбираю меню… Это может занять немного времени: "
                 "на платную нейросеть денег пока не накопили, поэтому наша "
                 "старается особенно вдумчиво."
             ),
@@ -157,13 +155,38 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        improved_text = await asyncio.to_thread(
-            improve_menu,
-            update.message.text
+        source_text, is_vision_result = await get_menu_input(update)
+    except Exception:
+        logger.exception("Не удалось получить текст меню")
+
+        if slow_progress_task:
+            slow_progress_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await slow_progress_task
+
+        if progress_message:
+            try:
+                await progress_message.delete()
+            except Exception:
+                logger.warning("Не удалось удалить котомем после ошибки", exc_info=True)
+
+        await update.message.reply_text(
+            "❌ Не смог прочитать фотографию.\n\n"
+            "Пришли её ещё раз, но без картошки на объективе 😼",
         )
+        return
+
+    try:
+        if is_vision_result:
+            improved_text = source_text
+        else:
+            improved_text = await asyncio.to_thread(
+                improve_menu,
+                source_text,
+            )
     except Exception as e:
         print(f"LLM error: {e}")
-        improved_text = update.message.text
+        improved_text = source_text
     finally:
         if slow_progress_task:
             slow_progress_task.cancel()
@@ -186,7 +209,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image_path = generate_image(data)
 
         with open(image_path, "rb") as photo:
-            await update.message.reply_photo(photo=photo, reply_markup=KEYBOARD)
+            await update.message.reply_photo(photo=photo)
 
         if progress_message:
             await progress_message.edit_caption("✅ Готово! Меню подано.")
@@ -195,7 +218,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             corrections_text = "\n".join(f"• {item}" for item in corrections[:10])
             await update.message.reply_text(
                 "Изменения при подготовке текста:\n" + corrections_text,
-                reply_markup=KEYBOARD,
             )
 
     except Exception:
@@ -210,7 +232,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ Лох, он и в Африке лох. Произошла ошибка.\n\n"
             "Иди проверь, что ты нам вообще отправил, и попробуй ещё раз",
-            reply_markup=KEYBOARD,
         )
 
 
@@ -229,14 +250,7 @@ def main():
 
     app.add_handler(
         MessageHandler(
-            filters.Regex(f"^{re.escape(GENERATE_MENU_BUTTON)}$"),
-            request_menu,
-        )
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            (filters.TEXT & ~filters.COMMAND) | filters.PHOTO,
             menu,
         )
     )

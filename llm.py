@@ -1,4 +1,5 @@
 import os
+import base64
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -16,6 +17,11 @@ MENU_SECTION_MARKERS = (
     "гарниры",
     "напитки",
     "десерт",
+)
+
+VISION_MODEL = os.getenv(
+    "VISION_MODEL",
+    os.getenv("OCR_MODEL", "openai/gpt-4o-mini"),
 )
 
 SYSTEM_PROMPT = """
@@ -112,3 +118,37 @@ def improve_menu(text: str) -> str:
         return text
 
     return result
+
+
+def improve_menu_from_image(image_bytes: bytes) -> str:
+    """Распознаёт фото и сразу возвращает структурированное меню."""
+
+    image_base64 = base64.b64encode(image_bytes).decode("ascii")
+    response = client.chat.completions.create(
+        model=VISION_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Распознай фотографию и верни готовое меню.",
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}"
+                        },
+                    }
+                ],
+            },
+        ],
+    )
+
+    result = response.choices[0].message.content
+
+    if not result or not is_menu_response(result):
+        raise ValueError("Модель не смогла распознать меню на фотографии")
+
+    return result.strip()
