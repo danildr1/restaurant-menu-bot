@@ -16,9 +16,12 @@ bot.py
 # ============================================================
 
 import logging
+from multiprocessing import context
 import os
 import re
-from LLM import ask_gemini
+import asyncio
+from turtle import update
+from LLM import improve_menu
 
 from dotenv import load_dotenv
 
@@ -123,7 +126,21 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Нормализует текст меню и показывает его для подтверждения.
     """
 
-    text, corrections = normalize_menu_text(update.message.text)
+    try:
+        improved_text = await asyncio.to_thread(
+            improve_menu,
+            update.message.text
+        )
+    except Exception as e:
+        print(f"LLM error: {e}")
+        improved_text = update.message.text
+
+    text, corrections = normalize_menu_text(improved_text)
+
+    print("===== AFTER LLM =====")
+    print(improved_text)
+    print("=====================")
+
     context.user_data["pending_menu_text"] = text
 
     corrections_text = "\n".join(f"• {item}" for item in corrections[:10])
