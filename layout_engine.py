@@ -37,20 +37,8 @@ def draw_item(draw, item, x, y, item_font, description_font, column_width, layou
     if title.startswith(("- ", "– ", "— ")):
         title = title[2:].lstrip()
 
-    marker_radius = max(3, item_font.size // 11)
-    text_indent = marker_radius * 4
-    text_x = x + text_indent
-    text_width = column_width - text_indent
-
-    draw.ellipse(
-        (
-            x,
-            y + item_font.size * 0.48 - marker_radius,
-            x + marker_radius * 2,
-            y + item_font.size * 0.48 + marker_radius,
-        ),
-        fill=layout.section_color,
-    )
+    text_x = x
+    text_width = column_width
 
     title_lines = wrap_text(draw, title, item_font, text_width)
 
