@@ -201,6 +201,12 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         logger.exception("Ошибка при обработке меню")
 
+        if progress_message:
+            try:
+                await progress_message.delete()
+            except Exception:
+                logger.warning("Не удалось удалить котомем после ошибки", exc_info=True)
+
         await update.message.reply_text(
             "❌ Лох, он и в Африке лох. Произошла ошибка.\n\n"
             "Иди проверь, что ты нам вообще отправил, и попробуй ещё раз",
