@@ -220,6 +220,8 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Изменения при подготовке текста:\n" + corrections_text,
             )
 
+        await update.message.reply_text("Давай следующую менюху 😼")
+
     except Exception:
         logger.exception("Ошибка при обработке меню")
 
