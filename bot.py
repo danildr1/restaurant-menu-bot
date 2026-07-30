@@ -18,6 +18,7 @@ bot.py
 import logging
 import os
 import re
+from LLM import ask_gemini
 
 from dotenv import load_dotenv
 
@@ -78,6 +79,9 @@ PREVIEW_KEYBOARD = ReplyKeyboardMarkup(
     resize_keyboard=True,
     one_time_keyboard=True,
 )
+
+
+print(ask_gemini("Ответь одним словом: OK"))
 
 
 # ============================================================
