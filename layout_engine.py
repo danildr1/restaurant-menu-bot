@@ -1,49 +1,18 @@
-"""
-layout_engine.py
+"""Движок рисования меню."""
 
-Движок рисования меню.
-
-Этот файл ничего не знает о Telegram,
-parser.py или image_generator.py.
-
-Он умеет только рисовать.
-"""
-
-from PIL import ImageDraw
-
-from layout import (
-    COLUMN_WIDTH,
-    TEXT_COLOR,
-    DESCRIPTION_COLOR,
-    LINE_HEIGHT,
-    ITEM_SPACING,
-    SECTION_SPACING,
-)
-
-
-# ============================================================
-# Перенос длинного текста
-# ============================================================
 
 def wrap_text(draw, text, font, width):
-    """
-    Разбивает длинную строку
-    на несколько строк.
-    """
+    """Разбивает текст на строки, которые помещаются в колонку."""
 
     if not text:
         return []
 
     words = text.split()
-
     lines = []
-
     current = words[0]
 
     for word in words[1:]:
-
-        candidate = current + " " + word
-
+        candidate = f"{current} {word}"
         if draw.textlength(candidate, font=font) <= width:
             current = candidate
         else:
@@ -51,83 +20,67 @@ def wrap_text(draw, text, font, width):
             current = word
 
     lines.append(current)
-
     return lines
 
 
-# ============================================================
-# Одно блюдо
-# ============================================================
+def text_line_height(font, spacing):
+    """Высота строки на основе фактического шрифта."""
 
-def draw_item(
-    draw,
-    item,
-    x,
-    y,
-    item_font,
-    description_font,
-):
-    """
-    Рисует одно блюдо.
-    """
+    bbox = font.getbbox("Аy")
+    return bbox[3] - bbox[1] + spacing
 
-    # ---------- Название блюда ----------
 
-    title = item["name"]
+def draw_item(draw, item, x, y, item_font, description_font, column_width, layout):
+    """Рисует блюдо и, при наличии, его состав."""
 
-    if item.get("price"):
-        title += f" {item['price']}"
+    title = item["name"].strip()
+    if title.startswith(("- ", "– ", "— ")):
+        title = title[2:].lstrip()
 
-    title_lines = wrap_text(
-        draw,
-        title,
-        item_font,
-        COLUMN_WIDTH,
+    marker_radius = max(3, item_font.size // 11)
+    text_indent = marker_radius * 4
+    text_x = x + text_indent
+    text_width = column_width - text_indent
+
+    draw.ellipse(
+        (
+            x,
+            y + item_font.size * 0.48 - marker_radius,
+            x + marker_radius * 2,
+            y + item_font.size * 0.48 + marker_radius,
+        ),
+        fill=layout.section_color,
     )
 
+    title_lines = wrap_text(draw, title, item_font, text_width)
+
+    if item.get("price"):
+        price = item["price"]
+        last_line_with_price = f"{title_lines[-1]} {price}"
+
+        if draw.textlength(last_line_with_price, font=item_font) <= text_width:
+            title_lines[-1] = last_line_with_price
+        else:
+            title_lines.append(price)
+
     for line in title_lines:
-
-        draw.text(
-            (x, y),
-            line,
-            fill=TEXT_COLOR,
-            font=item_font,
-        )
-
-        y += LINE_HEIGHT
-
-    # ---------- Состав ----------
+        draw.text((text_x, y), line, fill=layout.text_color, font=item_font)
+        y += text_line_height(item_font, layout.item_line_spacing)
 
     if item["description"]:
-
-        description_lines = wrap_text(
-            draw,
-            item["description"],
-            description_font,
-            COLUMN_WIDTH,
-        )
-
-        for line in description_lines:
-
+        for line in wrap_text(
+            draw, item["description"], description_font, text_width
+        ):
             draw.text(
-                (x, y),
+                (text_x, y),
                 line,
-                fill=DESCRIPTION_COLOR,
+                fill=layout.description_color,
                 font=description_font,
             )
+            y += text_line_height(description_font, layout.description_line_spacing)
 
-            y += LINE_HEIGHT - 6
+    return y + layout.item_spacing
 
-    # ---------- Отступ ----------
-
-    y += ITEM_SPACING
-
-    return y
-
-
-# ============================================================
-# Раздел
-# ============================================================
 
 def draw_section(
     draw,
@@ -137,39 +90,29 @@ def draw_section(
     title_font,
     item_font,
     description_font,
+    column_width,
+    layout,
 ):
-    """
-    Рисует раздел меню.
-    """
+    """Рисует заголовок раздела и его блюда."""
 
-    draw.text(
-        (x, y),
-        section["title"],
-        fill=TEXT_COLOR,
-        font=title_font,
-    )
-
-    y += LINE_HEIGHT + 12
+    for line in wrap_text(draw, section["title"], title_font, column_width):
+        draw.text((x, y), line, fill=layout.section_color, font=title_font)
+        y += text_line_height(title_font, layout.title_spacing)
 
     for item in section["items"]:
-
         y = draw_item(
-            draw=draw,
-            item=item,
-            x=x,
-            y=y,
-            item_font=item_font,
-            description_font=description_font,
+            draw,
+            item,
+            x,
+            y,
+            item_font,
+            description_font,
+            column_width,
+            layout,
         )
 
-    y += SECTION_SPACING
+    return y + layout.section_spacing
 
-    return y
-
-
-# ============================================================
-# Колонка
-# ============================================================
 
 def draw_column(
     draw,
@@ -179,23 +122,22 @@ def draw_column(
     title_font,
     item_font,
     description_font,
+    column_width,
+    layout,
 ):
-    """
-    Рисует целую колонку меню.
-    """
-
-    current_y = y
+    """Рисует все разделы одной колонки."""
 
     for section in sections:
-
-        current_y = draw_section(
-            draw=draw,
-            section=section,
-            x=x,
-            y=current_y,
-            title_font=title_font,
-            item_font=item_font,
-            description_font=description_font,
+        y = draw_section(
+            draw,
+            section,
+            x,
+            y,
+            title_font,
+            item_font,
+            description_font,
+            column_width,
+            layout,
         )
 
-    return current_y
+    return y

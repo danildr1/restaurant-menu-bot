@@ -49,6 +49,8 @@ SECTION_TITLES = {
     "ДЕСЕРТ",
 }
 
+DEFAULT_DATE = "Бизнес-ланч на сегодня"
+
 PRICE_PATTERN = re.compile(r"\s*\((\d+(?:[.,]\d{1,2})?\s*₽)\)\s*$")
 
 
@@ -113,14 +115,23 @@ def parse_menu(text):
     if not lines:
         raise ValueError("Пустое сообщение")
 
+    # Нормализатор всегда добавляет дату, но эта проверка не даёт потерять
+    # первый раздел, если parse_menu вызовут напрямую без нормализации.
+    if lines[0].upper() in SECTION_TITLES:
+        date = DEFAULT_DATE
+        menu_lines = lines
+    else:
+        date = lines[0]
+        menu_lines = lines[1:]
+
     result = {
-        "date": lines[0],
+        "date": date,
         "sections": []
     }
 
     current_section = None
 
-    for line in lines[1:]:
+    for line in menu_lines:
 
         upper = line.upper()
 
@@ -146,6 +157,12 @@ def parse_menu(text):
         current_section["items"].append(
             parse_item(line)
         )
+
+    # Пустые разделы иногда возвращаются LLM как заглушки. На изображении
+    # им делать нечего, поэтому оставляем только разделы с блюдами.
+    result["sections"] = [
+        section for section in result["sections"] if section["items"]
+    ]
 
     if not result["sections"]:
         raise ValueError("Не найдены разделы меню")
