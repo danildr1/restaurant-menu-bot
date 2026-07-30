@@ -42,12 +42,16 @@ DATE_PREFIX_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+LEADING_LIST_MARKER_PATTERN = re.compile(
+    r"^\s*(?:(?:[-—–•●▪◦‣·]+|\d+[.)])\s*)+"
+)
+
 
 def normalize_line(line, corrections):
     """Очищает одну строку меню и применяет безопасные исправления."""
 
     line = line.replace("\ufeff", "").replace("\u200b", "")
-    line = re.sub(r"^[\s•●▪◦‣·]+", "", line)
+    line = LEADING_LIST_MARKER_PATTERN.sub("", line)
     line = line.replace("«", "").replace("»", "")
     line = re.sub(r"\s+", " ", line).strip()
 
