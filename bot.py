@@ -16,8 +16,14 @@ bot.py
 # ============================================================
 
 import logging
+from multiprocessing import context
 import os
 import re
+import asyncio
+from contextlib import suppress
+from uuid import uuid4
+from turtle import update
+from llm import improve_menu
 
 from dotenv import load_dotenv
 
@@ -65,19 +71,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 GENERATE_MENU_BUTTON = "Сгенерировать меню по тексту"
-CONFIRM_MENU_BUTTON = "✅ Подтвердить меню"
-CANCEL_MENU_BUTTON = "Отменить"
+WAITING_CAT_URL = "https://cataas.com/cat/says/Думою..."
 
 KEYBOARD = ReplyKeyboardMarkup(
     [[GENERATE_MENU_BUTTON]],
     resize_keyboard=True,
 )
 
-PREVIEW_KEYBOARD = ReplyKeyboardMarkup(
-    [[CONFIRM_MENU_BUTTON, CANCEL_MENU_BUTTON]],
-    resize_keyboard=True,
-    one_time_keyboard=True,
-)
 
 
 # ============================================================
@@ -105,8 +105,6 @@ async def request_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Просит пользователя отправить текст меню.
     """
 
-    context.user_data.pop("pending_menu_text", None)
-
     await update.message.reply_text(
         "Отправь текст бизнес-ланча, и я создам изображение меню."
     )
@@ -118,62 +116,96 @@ async def request_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Нормализует текст меню и показывает его для подтверждения.
+    Нормализует текст меню и сразу создаёт изображение.
     """
 
-    text, corrections = normalize_menu_text(update.message.text)
-    context.user_data["pending_menu_text"] = text
-
-    corrections_text = "\n".join(f"• {item}" for item in corrections[:10])
-    message = "Проверь исправленный текст и подтверди создание меню:\n\n" + text
-
-    if corrections_text:
-        message += "\n\nИсправления и рекомендации:\n" + corrections_text
-
-    await update.message.reply_text(
-        message,
-        reply_markup=PREVIEW_KEYBOARD,
-    )
-
-
-async def confirm_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Создаёт изображение меню из подтверждённого текста."""
-
-    text = context.user_data.pop("pending_menu_text", None)
-
-    if not text:
-        await update.message.reply_text(
-            "Нет текста для подтверждения. Отправь меню ещё раз.",
-            reply_markup=KEYBOARD,
-        )
-        return
+    progress_message = None
 
     try:
+        progress_message = await update.message.reply_photo(
+            photo=f"{WAITING_CAT_URL}?v={uuid4().hex}",
+            caption=(
+                "🐈 Думаю над текстом… Это может занять немного времени: "
+                "на платную нейросеть денег пока не накопили, поэтому наша "
+                "старается особенно вдумчиво."
+            ),
+        )
+    except Exception:
+        logger.warning("Не удалось отправить котомем", exc_info=True)
+
+    async def show_slow_progress():
+        """Шутливо сообщает о долгом ответе LLM без нового уведомления."""
+
+        await asyncio.sleep(10)
+
+        try:
+            await progress_message.edit_caption(
+                "😅 Едрить там менюха… всей кухней перелопачиваем текст. "
+                "Ещё немного!"
+            )
+
+            await asyncio.sleep(20)
+            await progress_message.edit_caption(
+                "🫠 Ты че туда засунул?"
+                "Мы уже вспотели это читать!"
+            )
+        except Exception:
+            logger.warning("Не удалось обновить подпись котомема", exc_info=True)
+
+    slow_progress_task = (
+        asyncio.create_task(show_slow_progress()) if progress_message else None
+    )
+
+    try:
+        improved_text = await asyncio.to_thread(
+            improve_menu,
+            update.message.text
+        )
+    except Exception as e:
+        print(f"LLM error: {e}")
+        improved_text = update.message.text
+    finally:
+        if slow_progress_task:
+            slow_progress_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await slow_progress_task
+
+    text, corrections = normalize_menu_text(improved_text)
+
+    print("===== AFTER LLM =====")
+    print(improved_text)
+    print("=====================")
+
+    try:
+        if progress_message:
+            await progress_message.edit_caption(
+                "🎨 Текст разобран. Рисую меню — осталось чуть-чуть!"
+            )
+
         data = parse_menu(text)
         image_path = generate_image(data)
 
         with open(image_path, "rb") as photo:
             await update.message.reply_photo(photo=photo, reply_markup=KEYBOARD)
 
+        if progress_message:
+            await progress_message.edit_caption("✅ Готово! Меню подано.")
+
+        if corrections:
+            corrections_text = "\n".join(f"• {item}" for item in corrections[:10])
+            await update.message.reply_text(
+                "Изменения при подготовке текста:\n" + corrections_text,
+                reply_markup=KEYBOARD,
+            )
+
     except Exception:
         logger.exception("Ошибка при обработке меню")
 
         await update.message.reply_text(
-            "❌ Не удалось создать меню.\n\n"
-            "Проверьте текст и попробуйте ещё раз.",
+            "❌ Лох, он и в Африке лох. Произошла ошибка.\n\n"
+            "Иди проверь, что ты нам вообще отправил, и попробуй ещё раз",
             reply_markup=KEYBOARD,
         )
-
-
-async def cancel_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отменяет создание изображения из предварительного текста."""
-
-    context.user_data.pop("pending_menu_text", None)
-
-    await update.message.reply_text(
-        "Создание меню отменено.",
-        reply_markup=KEYBOARD,
-    )
 
 
 # ============================================================
@@ -193,20 +225,6 @@ def main():
         MessageHandler(
             filters.Regex(f"^{re.escape(GENERATE_MENU_BUTTON)}$"),
             request_menu,
-        )
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(f"^{re.escape(CONFIRM_MENU_BUTTON)}$"),
-            confirm_menu,
-        )
-    )
-
-    app.add_handler(
-        MessageHandler(
-            filters.Regex(f"^{re.escape(CANCEL_MENU_BUTTON)}$"),
-            cancel_menu,
         )
     )
 

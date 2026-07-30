@@ -1,6 +1,5 @@
-"""Нормализация текста меню перед подтверждением пользователем."""
+"""Нормализация текста меню перед передачей в парсер."""
 
-from functools import lru_cache
 import re
 
 
@@ -20,37 +19,13 @@ SECTION_ALIASES = {
     "ДЕСЕРТЫ": "ДЕСЕРТ",
 }
 
+DEFAULT_DATE = "Бизнес-ланч на сегодня"
+
 SPECIAL_CORRECTIONS = {
     "Г реческий": "Греческий",
     "краб.палочки": "крабовые палочки",
     "ветчин": "ветчина",
     "овощам": "овощами",
-}
-
-PROTECTED_WORDS = {
-    "габриэль",
-    "чахохбили",
-    "цукини",
-    "зразы",
-    "минтай",
-    "пекинка",
-    "ветчина",
-    "ветчиной",
-    "сыр",
-    "сыром",
-    "овощами",
-    "помидор",
-    "помидоры",
-    "огурцы",
-    "перец",
-    "соус",
-    "майонез",
-    "яйцо",
-    "рис",
-    "макароны",
-    "картофель",
-    "компот",
-    "сухофруктов",
 }
 
 DATE_PATTERN = re.compile(
@@ -60,52 +35,12 @@ DATE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-
-@lru_cache(maxsize=1)
-def get_spell_checker():
-    """Создаёт русскоязычный словарь для осторожной проверки опечаток."""
-
-    from spellchecker import SpellChecker
-
-    return SpellChecker(language="ru", distance=1)
-
-
-def restore_case(source, replacement):
-    """Сохраняет регистр слова после исправления."""
-
-    if source.isupper():
-        return replacement.upper()
-    if source.istitle():
-        return replacement.capitalize()
-    return replacement
-
-
-def correct_spelling(line, corrections):
-    """Находит сомнительные слова, не изменяя их автоматически."""
-
-    checker = get_spell_checker()
-
-    def replace_word(match):
-        word = match.group(0)
-        normalized = word.lower()
-
-        if word[0].isupper() or normalized in PROTECTED_WORDS or len(word) < 4:
-            return word
-
-        if normalized not in checker.unknown([normalized]):
-            return word
-
-        replacement = checker.correction(normalized)
-
-        if replacement and replacement != normalized:
-            suggestion = restore_case(word, replacement)
-            corrections.append(
-                f"Проверь орфографию: {word} (возможный вариант: {suggestion})"
-            )
-
-        return word
-
-    return re.sub(r"[А-Яа-яЁё]+", replace_word, line)
+DATE_PREFIX_PATTERN = re.compile(
+    r"^дата\s*:\s*(\d{1,2}\s+"
+    r"(?:января|февраля|марта|апреля|мая|июня|июля|августа|"
+    r"сентября|октября|ноября|декабря))$",
+    re.IGNORECASE,
+)
 
 
 def normalize_line(line, corrections):
@@ -132,7 +67,7 @@ def normalize_line(line, corrections):
         flags=re.IGNORECASE,
     )
 
-    return correct_spelling(line, corrections)
+    return line
 
 
 def normalize_menu_text(text):
@@ -157,13 +92,18 @@ def normalize_menu_text(text):
             lines.append(section)
             continue
 
+        date_prefix_match = DATE_PREFIX_PATTERN.fullmatch(line)
+        if date_prefix_match:
+            date = date_prefix_match.group(1).lower()
+            corrections.append(f"{line} → {date}")
+            continue
+
         if DATE_PATTERN.fullmatch(line):
             date = line.lower()
             continue
 
         lines.append(line)
 
-    if date:
-        lines.insert(0, date)
+    lines.insert(0, date or DEFAULT_DATE)
 
     return "\n".join(lines), list(dict.fromkeys(corrections))

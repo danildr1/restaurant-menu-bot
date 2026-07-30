@@ -1,74 +1,70 @@
-"""
-layout.py
+"""Адаптивные параметры оформления меню."""
 
-Все настройки внешнего вида меню.
+from dataclasses import dataclass
 
-Если нужно изменить размеры, цвета или расположение
-элементов — меняется только этот файл.
-"""
-
-# ============================================================
-# Размер изображения
-# ============================================================
 
 IMAGE_WIDTH = 1080
 IMAGE_HEIGHT = 1920
 
-#Высота даты
-
-DATE_Y = 60
-
-# ============================================================
-# Цвета
-# ============================================================
-
 BACKGROUND_COLOR = "#FFFFFF"
-
 TEXT_COLOR = "#222222"
-
 DESCRIPTION_COLOR = "#555555"
-
-# ============================================================
-# Размеры шрифтов
-# ============================================================
-
-DATE_FONT_SIZE = 56
-
-SECTION_FONT_SIZE = 36
-
-ITEM_FONT_SIZE = 32
-
-DESCRIPTION_FONT_SIZE = 24
-
-# ============================================================
-# Отступы
-# ============================================================
-
-LINE_HEIGHT = 40
-
-ITEM_SPACING = 12
-
-SECTION_SPACING = 40
+SECTION_COLOR = "#3E681D"
 
 
-# ============================================================
-# Левая колонка
-# ============================================================
+@dataclass(frozen=True)
+class MenuLayout:
+    """Размеры, вычисленные относительно фактического холста."""
 
-LEFT_COLUMN_X = 60
-LEFT_COLUMN_Y = 160
+    date_y: int
+    left_column_x: int
+    right_column_x: int
+    columns_y: int
+    left_column_width: int
+    right_column_width: int
+    date_font_size: int
+    section_font_size: int
+    item_font_size: int
+    description_font_size: int
+    item_spacing: int
+    section_spacing: int
+    title_spacing: int
+    item_line_spacing: int
+    description_line_spacing: int
+    text_color: str
+    description_color: str
+    section_color: str
 
-# ============================================================
-# Правая колонка
-# ============================================================
 
-RIGHT_COLUMN_X = 580
-RIGHT_COLUMN_Y = 160
+def get_layout(width: int, height: int, content_weight: float = 0) -> MenuLayout:
+    """Возвращает раскладку с отступами, зависящими от объёма меню."""
 
-# ============================================================
-# Ширина колонок
-# ============================================================
+    scale = min(width / IMAGE_WIDTH, height / IMAGE_HEIGHT)
 
-COLUMN_WIDTH = 435
+    if content_weight <= 14:
+        spacing_scale = 1.6
+    elif content_weight <= 25:
+        spacing_scale = 1.25
+    else:
+        spacing_scale = 1
 
-COLUMN_GAP = 80
+    return MenuLayout(
+        date_y=round(height * 0.03125),
+        left_column_x=round(width * 0.0556),
+        right_column_x=round(width * 0.5556),
+        columns_y=round(height * 0.1050),
+        left_column_width=round(width * 0.4600),
+        right_column_width=round(width * 0.3889),
+        date_font_size=round(72 * scale),
+        section_font_size=round(49 * scale),
+        item_font_size=round(44 * scale),
+        description_font_size=round(34 * scale),
+        item_spacing=round(18 * scale * spacing_scale),
+        section_spacing=round(52 * scale * spacing_scale),
+        title_spacing=round(18 * scale),
+        item_line_spacing=round(8 * scale),
+        description_line_spacing=round(7 * scale),
+        text_color=TEXT_COLOR,
+        description_color=DESCRIPTION_COLOR,
+        section_color=SECTION_COLOR,
+    )
