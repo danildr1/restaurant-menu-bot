@@ -91,7 +91,7 @@ def normalize_menu_text(text):
 
         if section_key in SECTION_ALIASES:
             section = SECTION_ALIASES[section_key]
-            if line != section:
+            if section_key != section:
                 corrections.append(f"{line} → {section}")
             lines.append(section)
             continue
