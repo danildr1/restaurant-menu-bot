@@ -1,4 +1,5 @@
 .env
+vk_faq_bot/muted_dialogs.json
 __pycache__/
 *.pyc
 .venv/

@@ -1,0 +1,17 @@
+services:
+  - type: worker
+    name: vk-faq-bot
+    runtime: python
+    buildCommand: pip install -r vk_faq_bot/requirements.txt
+    startCommand: python vk_faq_bot/bot.py
+    envVars:
+      - key: VK_GROUP_TOKEN
+        sync: false
+      - key: VK_GROUP_ID
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_BASE_URL
+        sync: false
+      - key: TEXT_MODEL
+        sync: false
